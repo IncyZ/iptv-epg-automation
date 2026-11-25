@@ -1,0 +1,63 @@
+
+name: Build seven-day TV Ireland EPG
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout automation repository
+        uses: actions/checkout@v4
+
+      - name: Checkout EPG generator
+        uses: actions/checkout@v4
+        with:
+          repository: iptv-org/epg
+          ref: master
+          path: epg-source
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install generator
+        working-directory: epg-source
+        run: npm install
+
+      - name: Generate seven-day guide
+        working-directory: epg-source
+        run: npm run grab --- --sites=tvireland.ie --output=guide.xml --days=7 --maxConnections=2
+
+      - name: Validate guide
+        working-directory: epg-source
+        run: |
+          test -s guide.xml
+          grep -q '<tv' guide.xml
+          COUNT=$(grep -c '<programme ' guide.xml)
+          echo "Programme entries: $COUNT"
+          if [ "$COUNT" -lt 10000 ]; then
+            echo "Guide appears incomplete"
+            exit 1
+          fi
+
+      - name: Publish guide
+        run: |
+          cp epg-source/guide.xml guide.xml
+          git config user.name "EPG Automation"
+          git config user.email "epg-automation@users.noreply.github.com"
+          git add guide.xml
+          if ! git diff --cached --quiet; then
+            git commit -m "Update seven-day TV Ireland EPG"
+            git push
+          else
+            echo "Guide unchanged"
+          fi
