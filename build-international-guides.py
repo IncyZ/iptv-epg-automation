@@ -30,8 +30,8 @@ def merge_guides(paths: list[Path]) -> ET.Element:
     root = ET.Element("tv", {"generator-info-name": "IncyZ TV Guide"})
     seen_channels = set()
     seen_programmes = set()
-    channel_count = 0
-    programme_count = 0
+    channels = []
+    programmes = []
 
     for path in paths:
         if not path.exists() or path.stat().st_size == 0:
@@ -42,8 +42,7 @@ def merge_guides(paths: list[Path]) -> ET.Element:
             if not channel_id or channel_id in seen_channels:
                 continue
             seen_channels.add(channel_id)
-            root.append(channel)
-            channel_count += 1
+            channels.append(channel)
 
         for programme in source_root.findall("programme"):
             key = (
@@ -55,11 +54,12 @@ def merge_guides(paths: list[Path]) -> ET.Element:
             if key in seen_programmes:
                 continue
             seen_programmes.add(key)
-            root.append(programme)
-            programme_count += 1
+            programmes.append(programme)
 
-    if channel_count == 0 or programme_count == 0:
-        raise RuntimeError(f"Guide has no usable data: {channel_count} channels, {programme_count} programmes")
+    if not channels or not programmes:
+        raise RuntimeError(f"Guide has no usable data: {len(channels)} channels, {len(programmes)} programmes")
+    root.extend(channels)
+    root.extend(programmes)
     return root
 
 def save_guide(root: ET.Element, xml_path: Path, gzip_path: Path | None = None):
