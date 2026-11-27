@@ -1,0 +1,91 @@
+name: Build Australia, New Zealand, Canada and USA EPGs
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run after the Ireland and Ukraine jobs have completed.
+    - cron: '0 2 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout TV guide repository
+        uses: actions/checkout@v4
+
+      - name: Checkout EPG generator
+        uses: actions/checkout@v4
+        with:
+          repository: iptv-org/epg
+          ref: master
+          path: epg-source
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install generator
+        working-directory: epg-source
+        run: npm install
+
+      - name: Prepare work directory
+        run: mkdir -p epg-source/work
+
+      - name: Build Australia source guides
+        working-directory: epg-source
+        run: |
+          npm run grab --- --sites=abc.net.au --output=work/{site}.xml --days=7 --maxConnections=2
+          npm run grab --- --sites=foxtel.com.au --output=work/{site}.xml --days=7 --maxConnections=2
+          npm run grab --- --sites=foxsports.com.au --output=work/{site}.xml --days=7 --maxConnections=2
+
+      - name: Build New Zealand guide
+        working-directory: epg-source
+        run: npm run grab --- --sites=sky.co.nz --output=work/{site}.xml --days=7 --maxConnections=2
+
+      - name: Build Canada guide
+        working-directory: epg-source
+        run: npm run grab --- --sites=watch.sportsnet.ca --output=work/{site}.xml --days=7 --maxConnections=2
+
+      - name: Build USA guide
+        working-directory: epg-source
+        run: npm run grab --- --sites=tvtv.us --output=work/{site}.xml --days=7 --maxConnections=2 --delay=2000
+
+      - name: Merge country and combined guides
+        run: python build-international-guides.py
+
+      - name: Validate published guides
+        run: |
+          python - <<'PY'
+          import gzip
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          for name in ("au", "nz", "ca", "us", "combined"):
+              path = Path(f"{name}.xml.gz")
+              with gzip.open(path, "rb") as source:
+                  root = ET.parse(source).getroot()
+              channels = len(root.findall("channel"))
+              programmes = len(root.findall("programme"))
+              print(f"{name.upper()}: {channels} channels, {programmes} programmes")
+              if channels == 0 or programmes == 0:
+                  raise SystemExit(f"{name} guide is empty")
+          PY
+
+      - name: Publish country and combined guides
+        run: |
+          git config user.name "EPG Automation"
+          git config user.email "epg-automation@users.noreply.github.com"
+          git add au.xml.gz nz.xml.gz ca.xml.gz us.xml.gz combined.xml.gz build-international-guides.py
+          if ! git diff --cached --quiet; then
+            git commit -m "Add international country and combined EPG guides"
+            git pull --rebase origin main
+            git push
+          else
+            echo "Guides unchanged"
+          fi
