@@ -57,6 +57,7 @@ jobs:
           git add guide.xml
           if ! git diff --cached --quiet; then
             git commit -m "Update seven-day TV Ireland EPG"
+            git pull --rebase origin main
             git push
           else
             echo "Guide unchanged"
