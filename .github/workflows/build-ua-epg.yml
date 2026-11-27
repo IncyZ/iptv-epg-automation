@@ -25,12 +25,12 @@ jobs:
 
       - name: Validate guide
         run: |
-          test -s ua-epg.xml.gz
+          test -s ua.xml.gz
           python - <<'PY'
           import gzip
           import xml.etree.ElementTree as ET
 
-          with gzip.open("ua-epg.xml.gz", "rb") as source:
+          with gzip.open("ua.xml.gz", "rb") as source:
               root = ET.parse(source).getroot()
 
           channels = root.findall("channel")
@@ -45,7 +45,7 @@ jobs:
         run: |
           git config user.name "EPG Automation"
           git config user.email "epg-automation@users.noreply.github.com"
-          git add ua-epg.xml.gz
+          git add ua.xml.gz
           if ! git diff --cached --quiet; then
             git commit -m "Update seven-day Ukraine EPG"
             git pull --rebase origin main
