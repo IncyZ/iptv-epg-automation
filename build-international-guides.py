@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-WORK = ROOT / "work"
+WORK = ROOT / "epg-source" / "work"
 
 COUNTRIES = {
     "au": ["abc.net.au", "foxtel.com.au", "foxsports.com.au"],
