@@ -1,96 +1,110 @@
 #!/usr/bin/env python3
-"""Merge country source XMLTV guides and publish country + combined feeds."""
+"""Split the North American TV Passport grabs into country feeds and publish a combined XMLTV feed."""
 from __future__ import annotations
-
 import gzip
+import os
+import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 WORK = ROOT / "epg-source" / "work"
+COUNTRY_RE = re.compile(r"\\.(ca|us)(?=@|$)", re.I)
 
-COUNTRIES = {
-    "au": ["abc.net.au", "foxtel.com.au", "foxsports.com.au"],
-    "nz": ["sky.co.nz"],
-    "ca": ["watch.sportsnet.ca"],
-    "us": ["tvtv.us"],
-}
+def read_root(path: Path) -> ET.Element:
+    opener = gzip.open if path.suffix == ".gz" else open
+    with opener(path, "rb") as f:
+        return ET.parse(f).getroot()
 
-def open_xml(path: Path):
-    if path.suffix == ".gz":
-        return gzip.open(path, "rb")
-    return path.open("rb")
+def country_of(channel_id: str | None) -> str | None:
+    if not channel_id:
+        return None
+    match = COUNTRY_RE.search(channel_id)
+    return match.group(1).lower() if match else None
 
-def read_guide(path: Path):
-    with open_xml(path) as source:
-        return ET.parse(source).getroot()
-
-def merge_guides(paths: list[Path]) -> ET.Element:
-    root = ET.Element("tv", {"generator-info-name": "IncyZ TV Guide"})
-    seen_channels = set()
-    seen_programmes = set()
-    channels = []
-    programmes = []
-
+def merge(paths: list[Path], only_country: str | None = None) -> ET.Element:
+    channels: dict[str, ET.Element] = {}
+    programmes: dict[tuple, ET.Element] = {}
     for path in paths:
         if not path.exists() or path.stat().st_size == 0:
-            raise RuntimeError(f"Missing or empty guide: {path}")
-        source_root = read_guide(path)
-        for channel in source_root.findall("channel"):
-            channel_id = channel.get("id")
-            if not channel_id or channel_id in seen_channels:
+            raise RuntimeError(f"Required source missing or empty: {path}")
+        root = read_root(path)
+        for channel in root.findall("channel"):
+            cid = channel.get("id")
+            if not cid or (only_country and country_of(cid) != only_country):
                 continue
-            seen_channels.add(channel_id)
-            channels.append(channel)
-
-        for programme in source_root.findall("programme"):
-            key = (
-                programme.get("channel"),
-                programme.get("start"),
-                programme.get("stop"),
-                (programme.findtext("title") or "").strip(),
-            )
-            if key in seen_programmes:
+            channels.setdefault(cid, channel)
+        for p in root.findall("programme"):
+            cid = p.get("channel")
+            if not cid or (only_country and country_of(cid) != only_country):
                 continue
-            seen_programmes.add(key)
-            programmes.append(programme)
-
+            key = (cid, p.get("start"), p.get("stop"), (p.findtext("title") or "").strip())
+            programmes.setdefault(key, p)
     if not channels or not programmes:
-        raise RuntimeError(f"Guide has no usable data: {len(channels)} channels, {len(programmes)} programmes")
-    root.extend(channels)
-    root.extend(programmes)
-    return root
+        raise RuntimeError(f"No usable data in {only_country or 'merged'} guide: {len(channels)} channels, {len(programmes)} programmes")
+    # XMLTV convention: channel declarations precede programme records.
+    out = ET.Element("tv", {"generator-info-name": "IncyZ TV Guide"})
+    out.extend(channels.values())
+    out.extend(programmes.values())
+    return out
 
-def save_guide(root: ET.Element, xml_path: Path, gzip_path: Path | None = None):
+def counts(root: ET.Element) -> tuple[int, int]:
+    return len(root.findall("channel")), len(root.findall("programme"))
+
+def write_pair(root: ET.Element, stem: str) -> tuple[Path, Path]:
+    xml_tmp = ROOT / f"{stem}.xml.tmp"
+    gz_tmp = ROOT / f"{stem}.xml.gz.tmp"
     tree = ET.ElementTree(root)
     ET.indent(tree, space="  ")
-    tree.write(xml_path, encoding="utf-8", xml_declaration=True)
-    if gzip_path:
-        with xml_path.open("rb") as source, gzip.open(gzip_path, "wb", compresslevel=9) as target:
-            target.write(source.read())
+    tree.write(xml_tmp, encoding="utf-8", xml_declaration=True)
+    with open(xml_tmp, "rb") as src, gzip.open(gz_tmp, "wb", compresslevel=9) as dst:
+        dst.write(src.read())
+    return xml_tmp, gz_tmp
 
-def main():
-    for country, sites in COUNTRIES.items():
-        paths = [WORK / f"{site}.xml" for site in sites]
-        root = merge_guides(paths)
-        xml_path = ROOT / f"{country}.xml"
-        gz_path = ROOT / f"{country}.xml.gz"
-        save_guide(root, xml_path, gz_path)
-        print(f"{country.upper()}: {len(root.findall('channel'))} channels, {len(root.findall('programme'))} programmes")
+def promote(pair: tuple[Path, Path], stem: str) -> None:
+    pair[0].replace(ROOT / f"{stem}.xml")
+    pair[1].replace(ROOT / f"{stem}.xml.gz")
 
-    # Keep the existing Ireland and Ukraine feeds as inputs; do not modify them.
-    combined_inputs = [
-        ROOT / "ie.xml",
-        ROOT / "ua.xml.gz",
-        ROOT / "au.xml.gz",
-        ROOT / "nz.xml.gz",
-        ROOT / "ca.xml.gz",
-        ROOT / "us.xml.gz",
-    ]
-    combined = merge_guides(combined_inputs)
-    save_guide(combined, ROOT / "combined.xml", ROOT / "combined.xml.gz")
-    print(f"COMBINED: {len(combined.findall('channel'))} channels, {len(combined.findall('programme'))} programmes")
+def main() -> None:
+    na_main = WORK / "north-america.xml"
+    na_extra = WORK / "north-america-extra.xml"
+    # The source configs have IDs ending in .ca/.us or .ca@region/.us@region.
+    # The extra list deliberately adds more provider IDs and is merged before splitting.
+    for country, minimum_channels, minimum_programmes in (
+        ("ca", 30, 500), ("us", 100, 1000)
+    ):
+        result = merge([na_main, na_extra], only_country=country)
+        ch, pr = counts(result)
+        print(f"{country.upper()}: {ch} channels, {pr} programmes")
+        if ch < minimum_channels or pr < minimum_programmes:
+            raise RuntimeError(f"{country.upper()} coverage below safety threshold ({minimum_channels} channels / {minimum_programmes} programmes)")
+        pair = write_pair(result, country)
+        promote(pair, country)
+
+    for country, sites, min_channels, min_programmes in (
+        ("au", ["abc.net.au", "foxtel.com.au", "foxsports.com.au"], 1, 50),
+        ("nz", ["sky.co.nz"], 1, 50),
+    ):
+        result = merge([WORK / f"{site}.xml" for site in sites])
+        ch, pr = counts(result)
+        print(f"{country.upper()}: {ch} channels, {pr} programmes")
+        if ch < min_channels or pr < min_programmes:
+            raise RuntimeError(f"{country.upper()} coverage below safety threshold")
+        pair = write_pair(result, country)
+        promote(pair, country)
+
+    combined = merge([
+        ROOT / "ie.xml", ROOT / "ua.xml.gz",
+        ROOT / "au.xml.gz", ROOT / "nz.xml.gz",
+        ROOT / "ca.xml.gz", ROOT / "us.xml.gz",
+    ])
+    ch, pr = counts(combined)
+    print(f"COMBINED: {ch} channels, {pr} programmes")
+    if ch < 100 or pr < 1000:
+        raise RuntimeError("Combined guide failed minimum coverage validation")
+    pair = write_pair(combined, "combined")
+    promote(pair, "combined")
 
 if __name__ == "__main__":
     try:
