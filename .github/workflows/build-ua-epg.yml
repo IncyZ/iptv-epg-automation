@@ -1,0 +1,55 @@
+name: Build seven-day Ukraine EPG
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 0 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout automation repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build Ukraine-only EPG
+        run: python build-ua.py
+
+      - name: Validate guide
+        run: |
+          test -s ua-epg.xml.gz
+          python - <<'PY'
+          import gzip
+          import xml.etree.ElementTree as ET
+
+          with gzip.open("ua-epg.xml.gz", "rb") as source:
+              root = ET.parse(source).getroot()
+
+          channels = root.findall("channel")
+          programmes = root.findall("programme")
+          print(f"Ukrainian EPG channels: {len(channels)}")
+          print(f"Programme entries: {len(programmes)}")
+          if not channels or len(programmes) < 100:
+              raise SystemExit("Guide validation failed")
+          PY
+
+      - name: Publish Ukrainian guide
+        run: |
+          git config user.name "EPG Automation"
+          git config user.email "epg-automation@users.noreply.github.com"
+          git add ua-epg.xml.gz
+          if ! git diff --cached --quiet; then
+            git commit -m "Update seven-day Ukraine EPG"
+            git pull --rebase origin main
+            git push
+          else
+            echo "Ukrainian guide unchanged"
+          fi
