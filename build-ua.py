@@ -19,7 +19,7 @@ EPG_SOURCES = [
     "https://iptvx.one/EPG",
     "https://epg.pw/xmltv/epg_RU.xml.gz",
 ]
-OUTPUT = "ua-epg.xml.gz"
+OUTPUT = "ua.xml.gz"
 DAYS_AHEAD = 7
 DAYS_BACK = 1
 CTX = ssl.create_default_context()
