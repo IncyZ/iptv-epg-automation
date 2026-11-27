@@ -32,13 +32,13 @@ def get(url, timeout=300):
     req = urllib.request.Request(url, headers=HEADERS)
     with urllib.request.urlopen(req, timeout=timeout, context=CTX) as response:
         data = response.read()
-    if data[:2] == b"\\x1f\\x8b":
+    if data[:2] == b"\x1f\x8b":
         return gzip.decompress(data)
     return data
 
 
 def norm(value):
-    value = re.sub(r"\\(.*?\\)|\\[.*?\\]", "", value.lower())
+    value = re.sub(r"\(.*?\)|\[.*?\]", "", value.lower())
     for word in (" hd", " fhd", " uhd", " 4k", "телеканал ", "tv channel"):
         value = value.replace(word, "")
     value = value.replace("плюс", "+").replace("plus", "+")
@@ -72,7 +72,7 @@ def load_epg(url, lo, hi):
     tmp.seek(0)
     magic = tmp.read(2)
     tmp.seek(0)
-    stream = gzip.GzipFile(fileobj=tmp) if magic == b"\\x1f\\x8b" else tmp
+    stream = gzip.GzipFile(fileobj=tmp) if magic == b"\x1f\x8b" else tmp
 
     index, channel_xml, programmes = {}, {}, {}
     for _, element in ET.iterparse(stream, events=("end",)):
@@ -135,24 +135,24 @@ def main():
         raise SystemExit("No Ukrainian channels matched programme data; refusing to publish an empty guide.")
 
     with gzip.open(OUTPUT, "wt", encoding="utf-8") as output:
-        output.write('<?xml version="1.0" encoding="UTF-8"?>\\n')
-        output.write('<tv generator-info-name="IncyZ UA EPG Automation">\\n')
+        output.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        output.write('<tv generator-info-name="IncyZ UA EPG Automation">\n')
         for output_id, (source_number, channel_id) in selected.items():
             xml = sources[source_number][1][channel_id]
-            xml = re.sub(r'\\bid="' + re.escape(channel_id) + r'"', f'id="{output_id}"', xml, count=1)
-            output.write(xml + "\\n")
+            xml = re.sub(r'\bid="' + re.escape(channel_id) + r'"', f'id="{output_id}"', xml, count=1)
+            output.write(xml + "\n")
         programme_count = 0
         for output_id, (source_number, channel_id) in selected.items():
             for xml in sources[source_number][2].get(channel_id, []):
                 xml = re.sub(
-                    r'\\bchannel="' + re.escape(channel_id) + r'"',
+                    r'\bchannel="' + re.escape(channel_id) + r'"',
                     f'channel="{output_id}"',
                     xml,
                     count=1,
                 )
-                output.write(xml + "\\n")
+                output.write(xml + "\n")
                 programme_count += 1
-        output.write("</tv>\\n")
+        output.write("</tv>\n")
 
     print(f"Matched Ukrainian channels: {len(selected)}", flush=True)
     print(f"Programme entries included: {programme_count}", flush=True)
