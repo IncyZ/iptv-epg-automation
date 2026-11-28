@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 WORK = ROOT / "epg-source" / "work"
-COUNTRY_RE = re.compile(r"\\.(ca|us)(?=@|$)", re.I)
+COUNTRY_RE = re.compile(r"\.(ca|us)(?=@|$)", re.I)
 
 def read_root(path: Path) -> ET.Element:
     opener = gzip.open if path.suffix == ".gz" else open
@@ -82,11 +82,21 @@ def main() -> None:
         pair = write_pair(result, country)
         promote(pair, country)
 
-    for country, sites, min_channels, min_programmes in (
-        ("au", ["abc.net.au", "foxtel.com.au", "foxsports.com.au"], 1, 50),
-        ("nz", ["sky.co.nz"], 1, 50),
+    for country, source_paths, min_channels, min_programmes in (
+        (
+            "au",
+            [
+                WORK / "abc.net.au.xml",
+                WORK / "foxtel.com.au.xml",
+                WORK / "foxsports.com.au.xml",
+                WORK / "eurotrasz-au.xml",
+            ],
+            1,
+            50,
+        ),
+        ("nz", [WORK / "sky.co.nz.xml"], 1, 50),
     ):
-        result = merge([WORK / f"{site}.xml" for site in sites])
+        result = merge(source_paths)
         ch, pr = counts(result)
         print(f"{country.upper()}: {ch} channels, {pr} programmes")
         if ch < min_channels or pr < min_programmes:
