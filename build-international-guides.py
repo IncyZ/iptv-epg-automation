@@ -82,31 +82,18 @@ def main() -> None:
         pair = write_pair(result, country)
         promote(pair, country)
 
-    for country, source_paths, min_channels, min_programmes in (
-        (
-            "au",
-            [
-                WORK / "abc.net.au.xml",
-                WORK / "foxtel.com.au.xml",
-                WORK / "foxsports.com.au.xml",
-                WORK / "eurotrasz-au.xml",
-            ],
-            1,
-            50,
-        ),
-        ("nz", [WORK / "sky.co.nz.xml"], 1, 50),
-    ):
-        result = merge(source_paths)
-        ch, pr = counts(result)
-        print(f"{country.upper()}: {ch} channels, {pr} programmes")
-        if ch < min_channels or pr < min_programmes:
-            raise RuntimeError(f"{country.upper()} coverage below safety threshold")
-        pair = write_pair(result, country)
-        promote(pair, country)
+    # New Zealand is built from Sky NZ; Australia is intentionally excluded for now.
+    result = merge([WORK / "sky.co.nz.xml"])
+    ch, pr = counts(result)
+    print(f"NZ: {ch} channels, {pr} programmes")
+    if ch < 1 or pr < 50:
+        raise RuntimeError("NZ coverage below safety threshold")
+    pair = write_pair(result, "nz")
+    promote(pair, "nz")
 
     combined = merge([
         ROOT / "ie.xml", ROOT / "ua.xml.gz",
-        ROOT / "au.xml.gz", ROOT / "nz.xml.gz",
+        ROOT / "nz.xml.gz",
         ROOT / "ca.xml.gz", ROOT / "us.xml.gz",
     ])
     ch, pr = counts(combined)
