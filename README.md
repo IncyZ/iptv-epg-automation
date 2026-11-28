@@ -27,10 +27,11 @@ The country feeds remain available independently:
 
 - Ireland: daily at 00:00 UTC.
 - Ukraine: daily at 00:30 UTC.
-- Australia, New Zealand, Canada, USA and combined guide: daily at 02:00 UTC.
+- Australian source EPG (including the Eurotrasz 7plus/9Now/10Play FAST supplement) and combined guide: refreshed every 6 hours.
+- New Zealand, Canada and USA source guides: daily at 02:00 UTC (with the combined guide refreshed again after each country build).
 - All workflows can also be started manually from the repository's Actions tab.
 
-The international workflow uses the pinned `iptv-org/epg` generator and the selected TV Passport channel lists in `channels-north-america.xml` and `channels-north-america-extra.xml`. Canada and the USA are split using their XMLTV country suffixes, retaining the separate regional IDs.
+The international workflow uses the pinned `iptv-org/epg` generator and the selected TV Passport channel lists in `channels-north-america.xml` and `channels-north-america-extra.xml`. Australian listings are supplemented with the separately maintained Eurotrasz XMLTV guide, which adds FAST listings from 7plus, 9Now and 10Play. All country data is merged into the single `combined.xml.gz` feed shown above. Canada and the USA are split using their XMLTV country suffixes, retaining the separate regional IDs.
 
 ## Validation and safety
 
