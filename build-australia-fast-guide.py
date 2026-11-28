@@ -66,10 +66,11 @@ def write_temp(root: ET.Element, stem: str) -> tuple[Path, Path]:
     ET.indent(tree, space="  ")
     tree.write(xml_path, encoding="utf-8", xml_declaration=True)
 
-    with open(xml_path, "rb") as source, gzip.open(
-        gzip_path, "wb", compresslevel=9, mtime=0
-    ) as target:
-        target.write(source.read())
+    with open(xml_path, "rb") as source, open(gzip_path, "wb") as raw:
+        with gzip.GzipFile(
+            fileobj=raw, mode="wb", compresslevel=9, mtime=0
+        ) as target:
+            target.write(source.read())
 
     # Validate the exact files before publishing either one.
     parsed = ET.parse(xml_path).getroot()
